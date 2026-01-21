@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UP Vision Tag Pro | 3.5" Label Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        @media print {
+            body { background: white !important; }
+            #mainApp, #authModal, #adminPanel, header, #toast, footer { display: none !important; }
+            #printSection {
+                display: block !important;
+                visibility: visible ! important;
+                position: fixed;
+                left: 0; top: 0;
+                width: 89mm; height: 120mm;
+                padding: 0; margin: 0;
+                background: white !important;
+            }
+            @page { size: 89mm 120mm; margin: 0; }
+        }
+        .label-container {
+            width: 89mm; height: 110mm;
+            padding: 4mm;
+            display: flex; flex-direction: column;
+            justify-content: space-between;
+            font-family: 'Helvetica', sans-serif;
+            border: 2px solid #000;
+            box-sizing: border-box;
+            background: #fff;
+            position: relative;
+        }
+        .void-stamp {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) rotate(-45deg);
+            color: rgba(60, 60, 60, 0.4);
+            border: 8px solid rgba(220, 38, 38, 0.4);
+            font-size: 64px; font-weight: 900;
+            padding: 10px 20px;
+            pointer-events: none;
+            z-index: 100;
+        }
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1em;
+        }
+        #productList::-webkit-scrollbar { width: 8px; }
+        #productList::-webkit-scrollbar-track { background: #f1f5f9; }
+        #productList::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-900 font-sans antialiased flex flex-col">
+
+    <div id="printSection" style="display: none;"></div>
+
+    <!-- Admin Password Modal -->
+    <div id="authModal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[150] hidden items-center justify-center p-4">
+        <div class="bg-white w-full max-sm:w-full max-w-sm rounded-[32px] p-10 space-y-8">
+            <h3 class="text-2xl font-black text-center">Admin Access</h3>
+            <input type="password" id="adminPwInput" class="w-full bg-slate-50 border-2 border-slate-200 rounded-2xl p-5 text-center text-3xl tracking-[1em] outline-none font-mono" placeholder="••••" onkeyup="if(event.key==='Enter') window.checkAdminPw()">
+            <button onclick="window.checkAdminPw()" class="w-full bg-blue-600 text-white font-black py-4 rounded-2xl shadow-xl">VERIFY</button>
+            <button onclick="document.getElementById('authModal').classList.add('hidden')" class="w-full text-slate-400 font-bold py-2">CANCEL</button>
+        </div>
+    </div>
+
+    <!-- Main UI -->
+    <div id="mainApp" class="flex flex-col flex-grow">
+        <header class="bg-white border-b border-slate-200 px-8 py-6 sticky top-0 z-40">
+            <div class="max-w-6xl mx-auto flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path></svg>
+                    </div>
+                    <div>
+                        <h1 class="font-black text-xl tracking-tight">UP Vision <span class="text-blue-600">Tag Pro</span></h1>
+                        <p id="dbCountText" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mt-1">Initializing...</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right mr-2 hidden md:block">
+                        <p class="text-[10px] font-black text-slate-400 uppercase leading-none">Next Tag #</p>
+                        <p id="nextTagDisplay" class="text-lg font-black text-blue-600 leading-none">00001</p>
+                    </div>
+                    <button onclick="window.openAdmin()" class="bg-slate-100 hover:bg-slate-200 p-3 rounded-xl transition-all">
+                        <svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"></path></svg>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-4xl mx-auto p-6 md:p-12 w-full">
+            <div class="bg-white rounded-[40px] shadow-sm border border-slate-100 p-10">
+                <form id="auditForm" class="space-y-8">
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Auditor Name</label>
+                            <input type="text" id="auditor" required class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all" placeholder="Enter name">
+                        </div>
+                        <div class="space-y-2">
+                             <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Serial Number (Optional)</label>
+                             <input type="text" id="serial" class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all" placeholder="Enter S/N">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="space-y-2">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Location</label>
+                            <select id="locMain" required class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all">
+                                <option value="" disabled selected>Select Area</option>
+                                <option value="Orbiter">Orbiter</option>
+                                <option value="Shelf">Shelf</option>
+                                <option value="Rack">Rack</option>
+                                <option value="Lenworth">Lenworth</option>
+                                <option value="DSV">DSV</option>
+                            </select>
+                        </div>
+                        <div id="subLocContainer" class="space-y-2 opacity-40 pointer-events-none">
+                            <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Sub-Location</label>
+                            <select id="locSub" required class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-bold outline-none focus:border-blue-500 transition-all">
+                                <option value="" disabled selected>Select Sub-Loc</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="relative space-y-2">
+                        <label class="text-sm font-black text-slate-800 ml-2">Product Search</label>
+                        <input type="text" id="productNumber" autocomplete="off" required class="w-full border-2 border-slate-200 rounded-3xl p-6 text-2xl font-black text-blue-600 focus:border-blue-600 outline-none uppercase" placeholder="Search SKU (e.g. 63000)...">
+                        <div id="productList" class="absolute w-full bg-white border border-slate-200 rounded-3xl shadow-2xl mt-2 overflow-hidden z-50 max-h-80 overflow-y-auto hidden"></div>
+                    </div>
+
+                    <textarea id="description" readonly class="w-full bg-slate-50 border-none rounded-2xl p-5 text-slate-500 h-20 text-sm font-bold italic resize-none" placeholder="Description..."></textarea>
+
+                    <div class="flex flex-col md:flex-row gap-6">
+                        <div class="flex-1 bg-blue-50 rounded-[32px] p-6 text-center border-2 border-blue-100">
+                            <label class="text-[10px] font-black text-blue-400 uppercase block mb-1">Quantity</label>
+                            <input type="number" id="qty" required step="any" class="w-full bg-transparent text-5xl font-black text-blue-900 text-center outline-none" placeholder="0">
+                        </div>
+                        <button type="submit" class="flex-[1.2] bg-blue-600 text-white rounded-[32px] font-black text-2xl hover:bg-blue-700 shadow-xl flex items-center justify-center gap-3 py-6 transition-all active:scale-95">
+                            PRINT TAG
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <!-- Admin Panel -->
+    <div id="adminPanel" class="fixed inset-0 bg-slate-50 z-[100] hidden flex-col overflow-y-auto">
+        <header class="bg-slate-900 text-white p-6 flex justify-between items-center sticky top-0">
+            <h2 class="text-xl font-black">Admin & Data Management</h2>
+            <button onclick="window.closeAdmin()" class="bg-red-500/20 text-red-400 px-6 py-2 rounded-xl font-bold">CLOSE</button>
+        </header>
+        
+        <div class="p-8 max-w-6xl mx-auto w-full grid lg:grid-cols-12 gap-8">
+            <!-- Admin Left: Database & Actions -->
+            <div class="lg:col-span-4 space-y-8">
+                <div class="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+                    <h4 class="text-xl font-black mb-1">Inventory Sync</h4>
+                    <p class="text-xs text-slate-400 mb-6 font-bold uppercase">Update SKU Master List</p>
+                    <label class="cursor-pointer block">
+                        <div class="bg-blue-600 text-white font-black py-4 px-6 rounded-2xl hover:bg-blue-700 text-center shadow-lg transition-all text-sm">UPLOAD MASTER FILE</div>
+                        <input type="file" accept=".xlsx, .xls" class="hidden" onchange="window.handleExcelUpload(event)">
+                    </label>
+                    <div class="mt-6 pt-6 border-t border-slate-100">
+                        <div class="text-2xl font-black text-slate-900" id="adminItemCount">0</div>
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">SKUs in Database</div>
+                    </div>
+                </div>
+
+                <div class="bg-white p-8 rounded-[40px] shadow-sm border border-slate-200">
+                    <h4 class="text-xl font-black mb-1">Export Data</h4>
+                    <p class="text-xs text-slate-400 mb-6 font-bold uppercase">Download current audit logs</p>
+                    <button onclick="window.exportAuditData()" class="w-full bg-slate-900 text-white font-black py-4 px-6 rounded-2xl hover:bg-slate-800 transition-all text-sm">DOWNLOAD .XLSX</button>
+                </div>
+
+                <div class="bg-blue-900 p-8 rounded-[40px] text-white">
+                    <h4 class="text-xl font-black mb-1">Tag Counter</h4>
+                    <p class="text-[10px] text-blue-300 mb-4 font-bold uppercase tracking-widest">Global Sequence</p>
+                    <div id="adminTagCounter" class="text-5xl font-black">00001</div>
+                    <button onclick="window.resetTagCounter()" class="mt-4 text-[10px] font-black text-blue-300 hover:text-white uppercase tracking-widest">Reset to 00001</button>
+                </div>
+            </div>
+
+            <!-- Admin Right: Recent Activity -->
+            <div class="lg:col-span-8 space-y-6">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xs font-black text-slate-400 uppercase tracking-widest">Audit Activity Feed</h2>
+                    <span id="recordCount" class="text-[10px] font-bold text-slate-400">0 RECORDS</span>
+                </div>
+                <div id="auditFeed" class="space-y-4">
+                    <!-- Cards will be injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-8 py-4 rounded-2xl font-black shadow-2xl transition-all translate-y-20 opacity-0 z-[300]"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, limit, updateDoc, deleteDoc, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAoKUtSr8Q4U7FCIL8kcL73l8IqKE4-Uhw",
+            authDomain: "inventory-counting-2393e.firebaseapp.com",
+            projectId: "inventory-counting-2393e",
+            storageBucket: "inventory-counting-2393e.firebasestorage.app",
+            messagingSenderId: "756636029357",
+            appId: "1:756636029357:web:f238cacbcff5ab4f6d9124",
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = "inventory-tag-pro-v1";
+        
+        let user = null;
+        let auditRecords = [];
+        let nextTagNumber = 1;
+        window.masterProducts = JSON.parse(localStorage.getItem('tagpro_master')) || [];
+
+        window.showNotification = (msg) => {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 3000);
+        };
+
+        const updateStatusUI = () => {
+            const count = window.masterProducts.length;
+            document.getElementById('dbCountText').innerHTML = `<span class="inline-block w-2 h-2 bg-blue-500 rounded-full mr-1"></span> Database: ${count.toLocaleString()} SKUs`;
+            const adminCount = document.getElementById('adminItemCount');
+            if(adminCount) adminCount.textContent = count.toLocaleString();
+            
+            const tagStr = nextTagNumber.toString().padStart(5, '0');
+            document.getElementById('nextTagDisplay').textContent = tagStr;
+            const adminTagDisplay = document.getElementById('adminTagCounter');
+            if(adminTagDisplay) adminTagDisplay.textContent = tagStr;
+        };
+
+        const locationData = {
+            "Orbiter": Array.from({length: 40}, (_, i) => (i + 1).toString()),
+            "Shelf": [1, 2, 3, 4].flatMap(num => ["A","B","C","D","E","F","G","H","I","J","K","L","M"].map(char => `${num}${char}`)),
+            "Rack": [
+                "AA-01", "AA-02", "AA-03", "AA-04", "AA-05", "AB-01", "AB-02", "AB-03", "AB-04", "AB-05",
+                "AC-01", "AC-02", "AC-03", "AC-04", "AC-05", "AC-06", "AD-01", "AD-02", "AD-03", "AD-04", "AD-05", "AD-06",
+                "AE-01", "AE-02", "AE-03", "AE-04", "AE-06", "AF-01", "AF-02", "AF-03", "AF-06",
+                "AG-01", "AG-02", "AG-03", "AG-04", "AG-05", "AG-06", "AG-07",
+                "AH-01", "AH-03", "AH-04", "AH-05", "AH-06", "AI-04", "AI-06", "AJ-01", "AJ-03", "AJ-05",
+                "AK-01", "AK-03", "AK-04", "AK-05", "BA-01", "BA-02", "BA-03", "BA-04", "BB-01", "BB-02", "BB-03", "BB-04",
+                "BC-01", "BC-02", "BC-03", "BC-04", "BC-05", "BC-06", "BD-01", "BD-02", "BD-03", "BD-04", "BD-05", "BD-06",
+                "BE-01", "BE-02", "BE-03", "BE-04", "BE-05", "BE-06", "BF-01", "BF-02", "BF-03", "BF-05", "BF-06",
+                "BG-01", "BG-02", "BG-03", "BG-04", "BG-05", "BG-06", "BG-07", "BH-02", "BH-03", "BH-05", "BH-06",
+                "BI-02", "BI-04", "BI-05", "BI-06", "BJ-01", "BJ-02", "BJ-03", "BJ-04", "BJ-05", "BK-01", "BK-03", "BK-04", "BK-05",
+                "CA-01", "CA-02", "CA-03", "CA-04", "CA-05", "CA-06",
+                "CB-01", "CB-02", "CB-03", "CB-04", "CB-05", "CB-06",
+                "CC-01", "CC-02", "CC-03", "CC-04", "CC-05", "CC-06",
+                "CD-01", "CD-02", "CD-03", "CD-04", "CD-05", "CD-06",
+                "CE-01", "CE-02", "CE-03", "CE-04", "CE-05", "CE-06",
+                "CF-01", "CF-02", "CF-03", "CF-04", "CF-05", "CF-06",
+                "DA-01", "DA-02", "DA-03", "DA-04", "DA-05", "DA-06",
+                "DB-01", "DB-02", "DB-03", "DB-04", "DB-05", "DB-06",
+                "DC-01", "DC-02", "DC-03", "DC-04", "DC-05", "DC-06",
+                "DD-01", "DD-02", "DD-03", "DD-04", "DD-05", "DD-06",
+                "DE-01", "DE-02", "DE-03", "DE-04", "DE-05", "DE-06",
+                "DF-01", "DF-02", "DF-03", "DF-04", "DF-05", "DF-06",
+                "EA-01", "EA-02", "EA-03", "EA-04", "EA-05", "EA-06",
+                "EB-01", "EB-02", "EB-03", "EB-04", "EB-05", "EB-06",
+                "EC-01", "EC-02", "EC-03", "EC-04", "EC-05", "EC-06",
+                "ED-01", "ED-02", "ED-03", "ED-04", "ED-05", "ED-06",
+                "EE-01", "EE-02", "EE-03", "EE-04", "EE-05", "EE-06",
+                "EF-01", "EF-02", "EF-03", "EF-04", "EF-05", "EF-06",
+                "FA-01", "FA-02", "FA-03", "FA-04", "FA-05", "FA-06",
+                "FB-01", "FB-02", "FB-03", "FB-04", "FB-05", "FB-06",
+                "FC-01", "FC-02", "FC-03", "FC-04", "FC-05", "FC-06",
+                "FD-01", "FD-02", "FD-03", "FD-04", "FD-05", "FD-06",
+                "FE-01", "FE-02", "FE-03", "FE-04", "FE-05", "FE-06",
+                "FF-01", "FF-02", "FF-03", "FF-04", "FF-05", "FF-06",
+                "GA-01", "GA-02", "GA-03", "GA-04", "GA-05", "GA-06",
+                "GB-01", "GB-02", "GB-03", "GB-04", "GB-05", "GB-06",
+                "GC-01", "GC-02", "GC-03", "GC-04", "GC-05", "GC-06",
+                "HA-01", "HA-02", "HA-03", "HA-04", "HA-05", "HA-06",
+                "HB-01", "HB-02", "HB-03", "HB-04", "HB-05", "HB-06",
+                "IA-01", "IA-02", "IA-03", "IA-04", "IA-05", "IA-06",
+                "IB-01", "IB-02", "IB-03", "IB-04", "IB-05", "IB-06",
+                "IC-01", "IC-02", "IC-03", "IC-04", "IC-05", "IC-06",
+                "JA-01", "JA-02", "JA-03", "JA-04", "JA-05", "JA-06",
+                "JB-01", "JB-02", "JB-03", "JB-04", "JB-05", "JB-06",
+                "JC-01", "JC-02", "JC-03", "JC-04", "JC-05", "JC-06",
+                "MR-1A", "MR-1B", "MR-1C", "MR-2A", "MR-2B", "MR-2C", "MR-4A", "MR-4B", "MR-4C", "MR-5C"
+            ],
+            "Lenworth": ["General"],
+            "DSV": ["General"]
+        };
+
+        const updateSubLocations = () => {
+            const mainLoc = document.getElementById('locMain').value;
+            const subLocSelect = document.getElementById('locSub');
+            const subContainer = document.getElementById('subLocContainer');
+            
+            subLocSelect.innerHTML = '<option value="" disabled selected>Select Sub-Loc</option>';
+            if (mainLoc && locationData[mainLoc]) {
+                subContainer.classList.remove('opacity-40', 'pointer-events-none');
+                locationData[mainLoc].forEach(sub => {
+                    const opt = document.createElement('option');
+                    opt.value = opt.textContent = sub;
+                    subLocSelect.appendChild(opt);
+                });
+            } else {
+                subContainer.classList.add('opacity-40', 'pointer-events-none');
+            }
+        };
+        document.getElementById('locMain').addEventListener('change', updateSubLocations);
+
+        const handleLookup = (e) => {
+            const val = e.target.value.toLowerCase().trim();
+            const list = document.getElementById('productList');
+            if (val.length < 1) { list.classList.add('hidden'); return; }
+            
+            const matches = window.masterProducts.filter(p => {
+                const skuStr = (p.ref || "").toString().toLowerCase().trim();
+                const descStr = (p.desc || "").toString().toLowerCase().trim();
+                return skuStr.includes(val) || descStr.includes(val);
+            }).slice(0, 30);
+
+            if (matches.length === 0) {
+                list.innerHTML = `<div class="p-4 text-slate-400 text-sm">No matches found for "${val}"</div>`;
+            } else {
+                list.innerHTML = matches.map(m => {
+                    const cleanRef = (m.ref || "").toString().trim();
+                    const cleanDesc = (m.desc || "").toString().trim();
+                    const attrRef = cleanRef.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                    const attrDesc = cleanDesc.replace(/'/g, "\\'").replace(/"/g, "&quot;");
+                    
+                    return `
+                        <div class="p-4 hover:bg-blue-50 cursor-pointer border-b last:border-0" 
+                             onmousedown="window.applyProduct('${attrRef}', '${attrDesc}')">
+                            <div class="font-bold text-blue-900">${cleanRef}</div>
+                            <div class="text-[10px] text-slate-500 truncate">${cleanDesc}</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+            list.classList.remove('hidden');
+        };
+
+        document.getElementById('productNumber').addEventListener('input', handleLookup);
+        document.getElementById('productNumber').addEventListener('blur', () => {
+            setTimeout(() => document.getElementById('productList').classList.add('hidden'), 200);
+        });
+
+        window.applyProduct = (ref, desc) => {
+            document.getElementById('productNumber').value = ref;
+            document.getElementById('description').value = desc;
+            document.getElementById('productList').classList.add('hidden');
+            setTimeout(() => document.getElementById('qty').focus(), 50);
+        };
+
+        window.handleExcelUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(sheet);
+                
+                if (rows.length > 0) {
+                    const newMaster = rows.map(r => ({
+                        ref: (r.SKU || r.sku || r.Part || r.ref || "").toString().trim(),
+                        desc: (r.Description || r.description || r.desc || "").toString().trim()
+                    })).filter(p => p.ref);
+
+                    if (newMaster.length > 0) {
+                        window.masterProducts = newMaster;
+                        localStorage.setItem('tagpro_master', JSON.stringify(newMaster));
+                        updateStatusUI();
+                        window.showNotification(`Success: ${newMaster.length} items loaded`);
+                    }
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        };
+
+        // Initialize Firebase Auth and Data Listeners
+        const init = async () => {
+            await signInAnonymously(auth);
+            
+            onAuthStateChanged(auth, (u) => {
+                user = u;
+                if (!user) return;
+
+                // RULE 1 Fixed: Path must be even segments (4 or 6). 
+                // artifacts/{appId}/public/data/config/{docId}
+                const counterRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'tag_counter');
+                
+                // Sync Tag Counter
+                onSnapshot(counterRef, (snap) => {
+                    if(snap.exists()) {
+                        nextTagNumber = snap.data().next || 1;
+                    } else {
+                        setDoc(counterRef, {next: 1});
+                        nextTagNumber = 1;
+                    }
+                    updateStatusUI();
+                }, (err) => console.error("Counter Sync Error:", err));
+
+                // Sync Audit History
+                const auditCol = collection(db, 'artifacts', appId, 'public', 'data', 'audit_history');
+                onSnapshot(query(auditCol, orderBy('at', 'desc'), limit(50)), (snap) => {
+                    auditRecords = snap.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                    renderFeed();
+                }, (err) => console.error("History Sync Error:", err));
+            });
+        };
+
+        init();
+
+        const renderFeed = () => {
+            const feed = document.getElementById('auditFeed');
+            document.getElementById('recordCount').textContent = `${auditRecords.length} RECORDS`;
+            feed.innerHTML = auditRecords.map(r => `
+                <div class="flex items-center justify-between p-5 bg-white border border-slate-200 rounded-3xl transition-all ${r.void ? 'opacity-50 grayscale bg-slate-50' : 'hover:border-blue-200'}">
+                    <div class="flex items-center gap-4 flex-grow overflow-hidden">
+                        <div class="w-12 h-12 rounded-2xl ${r.void ? 'bg-slate-200' : 'bg-blue-50'} flex items-center justify-center flex-shrink-0">
+                            <span class="text-[9px] font-black ${r.void ? 'text-slate-400' : 'text-blue-600'}">#${(r.tagId || '').toString().padStart(5, '0')}</span>
+                        </div>
+                        <div class="flex flex-col overflow-hidden">
+                            <div class="flex items-center gap-2">
+                                <span class="font-black text-slate-900 truncate">${r.sku}</span>
+                                ${r.serial ? `<span class="bg-slate-100 text-[8px] px-2 py-0.5 rounded font-bold text-slate-500">SN: ${r.serial}</span>` : ''}
+                                ${r.void ? `<span class="bg-red-500 text-white text-[8px] px-2 py-0.5 rounded font-black uppercase">VOIDED</span>` : ''}
+                            </div>
+                            <span class="text-[9px] text-slate-400 font-bold uppercase truncate">${r.locMain}-${r.locSub} &bull; BY ${r.auditor}</span>
+                        </div>
+                    </div>
+                    <div class="text-right flex items-center gap-6">
+                        <div class="flex flex-col items-end">
+                            <span class="block text-2xl font-black ${r.void ? 'text-slate-400 line-through' : 'text-slate-900'}">${r.qty}</span>
+                        </div>
+                        <div class="flex gap-1">
+                            <button onclick="window.reprint('${r.id}')" class="p-2 hover:bg-slate-100 rounded-lg text-blue-500" title="Reprint">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 00-2 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                            </button>
+                            ${!r.void ? `
+                            <button onclick="window.voidTag('${r.id}')" class="p-2 hover:bg-red-50 rounded-lg text-red-400" title="Void Tag">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
+                            </button>
+                            ` : ''}
+                            <button onclick="window.deleteTag('${r.id}')" class="p-2 hover:bg-red-100 rounded-lg text-red-600" title="Delete Permanent">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        };
+
+        window.reprint = (id) => {
+            const record = auditRecords.find(r => r.id === id);
+            if (record) triggerPrint(record);
+        };
+
+        window.voidTag = async (id) => {
+            if (!user) return;
+            const auditDoc = doc(db, 'artifacts', appId, 'public', 'data', 'audit_history', id);
+            await updateDoc(auditDoc, { void: true });
+            window.showNotification("Tag Voided");
+        };
+
+        window.deleteTag = async (id) => {
+            if (!user) return;
+            if(!confirm("Delete this record permanently?")) return;
+            const auditDoc = doc(db, 'artifacts', appId, 'public', 'data', 'audit_history', id);
+            await deleteDoc(auditDoc);
+            window.showNotification("Record Deleted");
+        };
+
+        window.resetTagCounter = async () => {
+            if (!user) return;
+            if(!confirm("Reset tag numbering to 00001?")) return;
+            const counterRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'tag_counter');
+            await setDoc(counterRef, {next: 1});
+            window.showNotification("Counter Reset");
+        };
+
+        const triggerPrint = (data) => {
+            const printArea = document.getElementById('printSection');
+            const at = new Date(data.at);
+            const tagIdStr = (data.tagId || 0).toString().padStart(5, '0');
+            printArea.innerHTML = `
+                <div class="label-container">
+                    ${data.void ? '<div class="void-stamp">VOID</div>' : ''}
+                    <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 2px; margin-bottom: 5px; align-items: center;">
+                        <span style="font-size: 14px; font-weight: 900;">INVENTORY TAG</span>
+                        <span style="font-size: 14px; font-weight: 900; background: #fff; color: #000; padding: 2px 6px;">#${tagIdStr}</span>
+                    </div>
+                    <div style="text-align: center; margin-bottom: 5px;">
+                        <div style="font-size: 8px; font-weight: bold;">PART NUMBER</div>
+                        <div style="font-size: 24px; font-weight: 900;">${data.sku}</div>
+                    </div>
+                    <div style="border: 0px solid #000; padding: 5px; flex-grow: 1; margin-bottom: 5px; min-height: 80px;">
+                        
+                        <div style="font-size: 11px; font-weight: 700; line-height: 1.1;">${data.desc || 'N/A'}</div>
+                    </div>
+                    
+${data.serial ? `
+                    <div style="border: 1.5px solid #000; padding: 3px 5px; margin-bottom: 5px; background: #f8f8f8;">
+                        <div style="font-size: 7px; font-weight: bold;">S/N: ${data.serial}</div>
+                        
+                    </div>` : ''}
+
+                    <div style="display: flex; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 4px 0;">
+                        <div style="width: 50%; border-right: 1.5px solid #000;">
+                            <div style="font-size: 8px; font-weight: bold;">LOC</div>
+                            <div style="font-size: 18px; font-weight: 900;">${data.locMain}-${data.locSub}</div>
+                        </div>
+                        <div style="width: 50%; padding-left: 8px;">
+                            <div style="font-size: 8px; font-weight: bold;">QTY</div>
+                            <div style="font-size: 24px; font-weight: 900;">${data.qty}</div>
+                        </div>
+                    </div>
+                    <div style="font-size: 9px; margin-top: 5px; display: flex; justify-content: space-between;">
+                        <span>BY: ${data.auditor}</span>
+                        <span>${at.toLocaleDateString()} ${at.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </div>
+
+                </div>
+            `;
+            printArea.style.display = 'block';
+            setTimeout(() => { window.print(); printArea.style.display = 'none'; }, 500);
+        };
+
+        document.getElementById('auditForm').onsubmit = async (e) => {
+            e.preventDefault();
+            if (!user) return;
+            
+            // 1. Increment Tag Counter in Firestore
+            const counterRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'tag_counter');
+            const currentTag = nextTagNumber;
+            await setDoc(counterRef, {next: currentTag + 1});
+
+            // 2. Create Record
+            const record = {
+                tagId: currentTag,
+                sku: document.getElementById('productNumber').value.toUpperCase(),
+                desc: document.getElementById('description').value,
+                serial: document.getElementById('serial').value,
+                locMain: document.getElementById('locMain').value,
+                locSub: document.getElementById('locSub').value,
+                qty: document.getElementById('qty').value,
+                auditor: document.getElementById('auditor').value,
+                void: false,
+                at: new Date().toISOString()
+            };
+
+            try {
+                const auditCol = collection(db, 'artifacts', appId, 'public', 'data', 'audit_history');
+                await addDoc(auditCol, record);
+                triggerPrint(record);
+                
+                // Reset form fields
+                document.getElementById('productNumber').value = '';
+                document.getElementById('description').value = '';
+                document.getElementById('serial').value = '';
+                document.getElementById('qty').value = '';
+                document.getElementById('productNumber').focus();
+                window.showNotification(`Tag #${currentTag.toString().padStart(5, '0')} Printed`);
+            } catch(e) { 
+                console.error(e);
+                window.showNotification("Error saving to cloud"); 
+            }
+        };
+
+        window.openAdmin = () => {
+            document.getElementById('authModal').classList.remove('hidden');
+            document.getElementById('authModal').classList.add('flex');
+            document.getElementById('adminPwInput').focus();
+        };
+
+        window.checkAdminPw = () => {
+            if (document.getElementById('adminPwInput').value === "1765") {
+                document.getElementById('authModal').classList.replace('flex', 'hidden');
+                document.getElementById('adminPanel').classList.remove('hidden');
+                updateStatusUI();
+            } else { 
+                window.showNotification("Wrong Password"); 
+                document.getElementById('adminPwInput').value = '';
+            }
+        };
+
+        window.closeAdmin = () => document.getElementById('adminPanel').classList.add('hidden');
+
+        window.exportAuditData = () => {
+            if (auditRecords.length === 0) return window.showNotification("No data to export");
+            const ws = XLSX.utils.json_to_sheet(auditRecords);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Audit");
+            XLSX.writeFile(wb, `Inventory_Audit_${new Date().toISOString().split('T')[0]}.xlsx`);
+        };
+
+        updateStatusUI();
+    </script>
+</body>
+</html>
